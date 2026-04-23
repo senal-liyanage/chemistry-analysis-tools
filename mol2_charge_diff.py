@@ -1,90 +1,107 @@
+"""Compute per-atom charge differences across related MOL2 files.
 
-"""
-This script calculates the charge difference between atoms in metal-bound, metal-unbound, and metal-only MOL2 files
-using Open Babel. The charge difference is written to a text file, 'charge_difference.txt'.
+This script compares metal-bound, metal-unbound, and metal-only MOL2 files and
+writes a per-atom charge-difference report.
 
 Usage:
-python calculate_charge_difference.py bound_mol2_path unbound_mol2_path metal_mol2_path
-
-The input files must be in MOL2 format and contain at least one metal atom.
-
-Improvements made:
-
-Used argparse to handle command-line arguments.
-Used context managers to open and close files.
-Added error handling for file not found and Open Babel command failure.
-Improved variable naming for clarity.
+    python mol2_charge_diff.py bound.mol2 unbound.mol2 metal.mol2
 """
 
 import argparse
 import logging
+import sys
+
 from openbabel import openbabel as ob
 
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# Define command line arguments
-parser = argparse.ArgumentParser(description='Calculate charge difference.')
-parser.add_argument('bound', type=argparse.FileType('r'), help='Path to the metal-bound mol2 file.')
-parser.add_argument('unbound', type=argparse.FileType('r'), help='Path to the metal-unbound mol2 file.')
-parser.add_argument('metal', type=argparse.FileType('r'), help='Path to the metal-only mol2 file.')
-args = parser.parse_args()
 
-# Create an instance of the obConversion class
-conv = ob.OBConversion()
+def load_mol2(path):
+    conv = ob.OBConversion()
+    conv.SetInFormat("mol2")
+    mol = ob.OBMol()
+    if not conv.ReadFile(mol, path):
+        raise ValueError(f"Failed to read MOL2 file: {path}")
+    return mol
 
-# Load the mol2 files
-bound_mol = ob.OBMol()
-conv.ReadFile(bound_mol, args.bound.name)
 
-unbound_mol = ob.OBMol()
-conv.ReadFile(unbound_mol, args.unbound.name)
-
-metal_mol = ob.OBMol()
-conv.ReadFile(metal_mol, args.metal.name)
-
-# Extract the charges for each atom in each residue
-bound_residue_charges = {}
-for res in ob.OBResidueIter(bound_mol):
-    res_id = res.GetNum()
-    for atom in ob.OBResidueAtomIter(res):
-        atom_name = res.GetAtomID(atom)
-        bound_residue_charges[f'{res_id}_{atom_name}'] = atom.GetPartialCharge()
-
-unbound_residue_charges = {}
-for res in ob.OBResidueIter(unbound_mol):
-    res_id = res.GetNum()
-    for atom in ob.OBResidueAtomIter(res):
-        atom_name = res.GetAtomID(atom)
-        unbound_residue_charges[f'{res_id}_{atom_name}'] = atom.GetPartialCharge()
-
-metal_residue_charges = {}
-for res in ob.OBResidueIter(metal_mol):
-    res_id = res.GetNum()
-    for atom in ob.OBResidueAtomIter(res):
-        atom_name = res.GetAtomID(atom)
-        metal_residue_charges[f'{res_id}_{atom_name}'] = atom.GetPartialCharge()
-
-# Find common atoms between metal-bound, metal-unbound, and metal-only
-common_atoms = set(bound_charges.keys()).intersection(unbound_charges.keys(), metal_charges.keys())
-
-# Calculate the charge difference for common atoms
-charge_diff = {}
-for key in common_atoms:
-    bound_charge = bound_charges.get(key, 0.0)
-    unbound_charge = unbound_charges.get(key, 0.0)
-    metal_charge = metal_charges.get(key, 0.0)
-    charge_diff[key] = bound_charge - (unbound_charge + metal_charge)
-
-# Print the charge difference for each atom in each residue
-with open('charge_difference.txt', 'w') as f:
-    f.write(f"{'Residue ID':<10} {'Atom Name':<10} {'Bound Charge':<15} {'Unbound Charge':<15} {'Metal Charge':<15} {'Charge Difference':<18}\n")
-    for res in ob.OBResidueIter(bound_mol):
+def extract_residue_charges(mol):
+    charges = {}
+    for res in ob.OBResidueIter(mol):
         res_id = res.GetNum()
         for atom in ob.OBResidueAtomIter(res):
-            atom_name = res.GetAtomID(atom)
-            bound_charge = bound_charges.get(f'{res_id}_{atom_name}', 0.0)
-            unbound_charge = unbound_charges.get(f'{res_id}_{atom_name}', 0.0)
-            metal_charge = metal_charges.get(f'{res_id}_{atom_name}', 0.0)
-            diff = bound_charge - (unbound_charge + metal_charge)
-            f.write(f"{res_id:<10} {atom_name:<10} {bound_charge:<15.4f} {unbound_charge:<15.4f} {metal_charge:<15.4f} {diff:<18.4f}\n")
-            print(f"{res_id:<8} {atom_name:<10} {bound_charge:<15.4f} {unbound_charge:<15.4f} {metal_charge:<15.4f} {diff:<18.4f}")
+            atom_name = res.GetAtomID(atom).strip()
+            charges[f"{res_id}_{atom_name}"] = atom.GetPartialCharge()
+    return charges
+
+
+def write_charge_difference_report(bound_mol, bound_charges, unbound_charges, metal_charges, output_path):
+    with open(output_path, "w") as handle:
+        handle.write(
+            f"{'Residue ID':<10} {'Atom Name':<10} {'Bound Charge':<15} "
+            f"{'Unbound Charge':<15} {'Metal Charge':<15} {'Charge Difference':<18}\n"
+        )
+
+        for res in ob.OBResidueIter(bound_mol):
+            res_id = res.GetNum()
+            for atom in ob.OBResidueAtomIter(res):
+                atom_name = res.GetAtomID(atom).strip()
+                key = f"{res_id}_{atom_name}"
+                if key not in bound_charges or key not in unbound_charges or key not in metal_charges:
+                    continue
+
+                bound_charge = bound_charges[key]
+                unbound_charge = unbound_charges[key]
+                metal_charge = metal_charges[key]
+                diff = bound_charge - (unbound_charge + metal_charge)
+
+                line = (
+                    f"{res_id:<10} {atom_name:<10} {bound_charge:<15.4f} "
+                    f"{unbound_charge:<15.4f} {metal_charge:<15.4f} {diff:<18.4f}"
+                )
+                handle.write(line + "\n")
+                print(line)
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Calculate charge differences from related MOL2 files.")
+    parser.add_argument("bound", help="Path to the metal-bound MOL2 file.")
+    parser.add_argument("unbound", help="Path to the metal-unbound MOL2 file.")
+    parser.add_argument("metal", help="Path to the metal-only MOL2 file.")
+    parser.add_argument(
+        "-o",
+        "--output",
+        default="charge_difference.txt",
+        help="Output text file for the charge-difference report.",
+    )
+    args = parser.parse_args()
+
+    try:
+        bound_mol = load_mol2(args.bound)
+        unbound_mol = load_mol2(args.unbound)
+        metal_mol = load_mol2(args.metal)
+
+        bound_charges = extract_residue_charges(bound_mol)
+        unbound_charges = extract_residue_charges(unbound_mol)
+        metal_charges = extract_residue_charges(metal_mol)
+
+        common_atoms = set(bound_charges).intersection(unbound_charges, metal_charges)
+        if not common_atoms:
+            raise ValueError("No common residue/atom identifiers were found across the three MOL2 files.")
+
+        logger.info("Writing charge-difference report for %d common atoms.", len(common_atoms))
+        write_charge_difference_report(
+            bound_mol,
+            bound_charges,
+            unbound_charges,
+            metal_charges,
+            args.output,
+        )
+    except Exception as exc:
+        logger.error("%s", exc)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
