@@ -35,5 +35,11 @@ This repository is intended as a practical utility collection for small chemistr
 - These tools assume MOL2 inputs with atom and residue information compatible with the current parsing logic.
 - Users may need to adapt the scripts for project-specific naming conventions or atom-selection schemes.
 
+## Contributing
+Small, focused pull requests are preferred. Good contributions include bug fixes, clearer error handling, usage examples, and lightweight refactoring that improves script reliability without overcomplicating the repository.
+
+## Citation
+If this repository contributes to published work, please cite the repository and the version used.
+
 ## License
 This project is released under the MIT License. See [`LICENSE`](LICENSE) for details.
