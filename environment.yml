@@ -1,0 +1,10 @@
+name: chemistry-analysis-tools
+channels:
+  - conda-forge
+dependencies:
+  - python>=3.10
+  - numpy>=1.24
+  - pandas>=2.0
+  - matplotlib>=3.7
+  - mdanalysis>=2.6
+  - pip

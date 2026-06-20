@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# Environments
+.env
+.venv/
+env/
+venv/
+
+# Scientific outputs
+results/
+outputs/
+figures/generated/
+*.xtc
+*.trr
+*.edr
+*.cpt
+*.tpr
+*.gro
+*.pdb
+*.mol2
+*.dcd
+*.nc
+*.h5
+
+# OS/editor
+.DS_Store
+.vscode/
+.idea/
